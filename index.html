@@ -214,6 +214,7 @@ a:focus-visible { outline: 3px solid var(--court); outline-offset: 3px; }
 .install button:focus-visible { outline: 3px solid var(--court); outline-offset: 2px; }
 footer { color: var(--muted); font-size: 13px; text-align: center; }
 footer a { color: var(--court); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; display: inline-block; padding-block: 8px; }
+footer a.cm { color: var(--muted); font-weight: 400; font-size: 12px; padding-block: 10px; }
 @media (prefers-reduced-motion: no-preference) {
   .hero, .tile { transition: transform .12s ease; }
   .hero:active, a.tile:active { transform: scale(.98); }
@@ -232,7 +233,7 @@ footer a { color: var(--court); font-weight: 600; text-decoration: underline; te
   <section class="updates" id="updates" hidden></section>
   <div class="notify" id="notify" hidden></div>
   <div class="install" id="install" hidden></div>
-  <footer>ATP Pickleball Club · <a href="https://www.atppickleballclub.com.au">www.atppickleballclub.com.au</a></footer>
+  <footer>ATP Pickleball Club · <a href="https://www.atppickleballclub.com.au">www.atppickleballclub.com.au</a><br><a class="cm" href="committee.html">Committee login</a></footer>
 </div>
 
 <script>
@@ -558,9 +559,10 @@ if ("serviceWorker" in navigator && location.protocol === "https:" && /atppickle
 /* ===== Latest updates =====
    Messages the committee posts from post.html, newest first. Anyone can read
    them. Posts marked "test" only show in the test app.                    */
+const SHOW_UPDATES = false;   // switched off until post.html is set up and tested
 (function latestUpdates() {
   const box = document.getElementById("updates");
-  if (!/^https?:$/.test(location.protocol)) return;
+  if (!SHOW_UPDATES || !/^https?:$/.test(location.protocol)) return;
   const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE.project}/databases/(default)/documents/updates?orderBy=createdAt%20desc&pageSize=30&key=${FIREBASE.key}`;
   fetch(url).then(r => r.ok ? r.json() : null).then(j => {
     if (!j || !j.documents) return;

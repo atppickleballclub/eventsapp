@@ -37,6 +37,8 @@ input { font: inherit; padding: 10px 12px; min-height: 44px; border-radius: 10px
 button { min-height: 48px; border: 0; border-radius: 999px; background: var(--court-deep); color: var(--ball); font: 700 18px var(--display); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
 button.ghost { background: transparent; color: var(--court); min-height: 40px; font-size: 15px; justify-self: start; padding: 0; }
 button:focus-visible, input:focus-visible { outline: 3px solid var(--court); outline-offset: 2px; }
+label.keep { display: flex; align-items: center; gap: 10px; font-weight: 400; min-height: 44px; }
+label.keep input { width: 22px; height: 22px; min-height: 0; margin: 0; accent-color: var(--court-deep); }
 .err { color: var(--bad); font-size: 15px; margin: 0; }
 .big { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .stat { background: var(--surface); border: 1px solid var(--rule); border-radius: 16px; padding: 16px; display: grid; gap: 2px; }
@@ -59,10 +61,12 @@ h2 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 14px; 
 .track i { display: block; height: 100%; background: var(--court); border-radius: 999px; }
 .row b { text-align: right; font-variant-numeric: tabular-nums; }
 .note { color: var(--muted); font-size: 14px; margin: 0; }
+.back { color: var(--court); font-weight: 600; text-decoration: none; justify-self: start; padding-block: 6px; }
 </style>
 </head>
 <body>
 <div class="wrap">
+  <a class="back" href="committee.html">← Committee</a>
   <header>
     <img src="icons/logo.png" alt="ATP Pickleball Club">
     <div><small>ATP Events app</small><h1>Usage stats</h1></div>
@@ -71,16 +75,17 @@ h2 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 14px; 
   <form class="card" id="login" hidden>
     <label for="email">Committee email<input id="email" type="email" autocomplete="username" required></label>
     <label for="pw">Password<input id="pw" type="password" autocomplete="current-password" required></label>
+    <label class="keep"><input type="checkbox" id="keep"> Keep me signed in on this phone</label>
     <button type="submit" id="go">Sign in</button>
     <p class="err" id="err" hidden></p>
   </form>
 
   <div id="stats" hidden style="display:grid;gap:16px">
     <div class="big">
-      <div class="stat main"><b id="s-installed">–</b><span>Phones with the app installed</span><small>Opened from the home screen at least once</small></div>
+      <div class="stat main"><b id="s-installed">–</b><span>Phones using the installed app</span><small>Opened from the home screen in the last 60 days</small></div>
       <div class="stat"><b id="s-week">–</b><span>Active this week</span><small>Opened in the last 7 days</small></div>
       <div class="stat"><b id="s-today">–</b><span>Today</span><small>Phones that opened it today</small></div>
-      <div class="stat"><b id="s-web">–</b><span>Browser only</span><small>Looked at the page, never installed</small></div>
+      <div class="stat"><b id="s-web">–</b><span>Browser only</span><small>Looked at the page in a browser, not the app (last 60 days)</small></div>
       <div class="stat"><b id="s-new">–</b><span>New installs</span><small>First home-screen open, last 7 days</small></div>
     </div>
     <div class="card">
@@ -97,13 +102,10 @@ h2 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 14px; 
   </div>
 </div>
 
+<script src="committee-auth.js"></script>
 <script>
-const FB_KEY = "AIzaSyAykyvBpr-3H4_gCm--8tDN2IhV-2EFfj0";
-const FB_PROJECT = "atp-events";
+const FB_PROJECT = ATP_AUTH.PROJECT;
 const $ = id => document.getElementById(id);
-const store = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
-                set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} },
-                del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
 
 function showLogin(msg) {
   $("stats").hidden = true; $("login").hidden = false;
@@ -113,48 +115,44 @@ function showLogin(msg) {
 $("login").addEventListener("submit", async ev => {
   ev.preventDefault();
   $("go").disabled = true; $("go").textContent = "Signing in…";
-  try {
-    const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FB_KEY}`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: $("email").value.trim(), password: $("pw").value, returnSecureToken: true })
-    });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error && j.error.message);
-    store.set("atpToken", j.idToken);
-    store.set("atpTokenExp", String(Date.now() + (Number(j.expiresIn) - 60) * 1000));
-    load();
-  } catch (e) {
-    showLogin("That email and password didn't work. Use your committee login for the ATP Events Firebase.");
-  } finally {
-    $("go").disabled = false; $("go").textContent = "Sign in";
-  }
+  try { await ATP_AUTH.signIn($("email").value, $("pw").value, $("keep").checked); load(); }
+  catch (e) { showLogin(ATP_AUTH.message(e)); }
+  finally { $("go").disabled = false; $("go").textContent = "Sign in"; }
 });
-$("out").addEventListener("click", () => { store.del("atpToken"); showLogin(); });
+$("out").addEventListener("click", () => { ATP_AUTH.signOut(); showLogin(); });
+$("keep").checked = ATP_AUTH.remembered();
 
+// Only reads the last DAYS days of counter notes, so the stats page stays
+// cheap however long the app has been running.
+const DAYS = 60;
 async function fetchAll(token) {
-  const out = []; let page = "";
-  do {
-    const r = await fetch(`https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents/appVisits?pageSize=1000${page ? "&pageToken=" + encodeURIComponent(page) : ""}`,
-      { headers: { Authorization: "Bearer " + token } });
-    if (r.status === 401 || r.status === 403) throw new Error("auth");
-    const j = await r.json();
-    (j.documents || []).forEach(d => {
-      const f = d.fields || {};
-      out.push({ date: f.date?.stringValue, device: f.device?.stringValue, installed: !!f.installed?.booleanValue, platform: f.platform?.stringValue || "other" });
-    });
-    page = j.nextPageToken || "";
-  } while (page);
+  const since = new Date(Date.now() - (DAYS - 1) * 86400000).toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
+  const r = await fetch(`https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents:runQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ structuredQuery: {
+      from: [{ collectionId: "appVisits" }],
+      where: { fieldFilter: { field: { fieldPath: "date" }, op: "GREATER_THAN_OR_EQUAL", value: { stringValue: since } } }
+    } })
+  });
+  if (r.status === 401 || r.status === 403) throw new Error("auth");
+  const rows = await r.json();
+  const out = [];
+  (Array.isArray(rows) ? rows : []).forEach(x => {
+    const f = x.document?.fields; if (!f) return;
+    out.push({ date: f.date?.stringValue, device: f.device?.stringValue, installed: !!f.installed?.booleanValue, platform: f.platform?.stringValue || "other" });
+  });
   return out;
 }
 
 const sydDate = d => d.toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
 
 async function load() {
-  const token = store.get("atpToken");
-  if (!token || Number(store.get("atpTokenExp") || 0) < Date.now()) return showLogin();
+  const token = await ATP_AUTH.token();
+  if (!token) return showLogin();
   let rows;
   try { rows = await fetchAll(token); }
-  catch (e) { return showLogin(e.message === "auth" ? "Your sign-in has expired. Sign in again." : "Couldn't load the numbers. Check your connection and try again."); }
+  catch (e) { return showLogin(e.message === "auth" ? ATP_AUTH.message(new Error("not-committee")) : "Couldn't load the numbers. Check your connection and try again."); }
 
   const today = sydDate(new Date());
   const days = [...Array(14)].map((_, i) => sydDate(new Date(Date.now() - (13 - i) * 86400000)));
@@ -191,7 +189,7 @@ async function load() {
   $("split").innerHTML = [["iPhone", counts.ios], ["Android", counts.android], ["Other", counts.other]]
     .map(([name, n]) => `<div class="row"><span>${name}</span><span class="track"><i style="width:${(n / total) * 100}%"></i></span><b>${n}</b></div>`).join("");
 
-  $("updated").textContent = `Updated ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney", dateStyle: "medium", timeStyle: "short" })}. Counts start from when the counter was added.`;
+  $("updated").textContent = `Updated ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney", dateStyle: "medium", timeStyle: "short" })}. Figures cover the last 60 days.`;
   $("login").hidden = true; $("stats").hidden = false;
 }
 

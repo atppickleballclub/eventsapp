@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0b344b">
+<title>ATP Committee</title>
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Committee area: sign-in card, then a list of committee-only tools. */
+:root {
+  --court: #1a78a8; --court-deep: #0b344b; --ball: #d7db38; --rim: #aec11d;
+  --bg: #eef3f4; --surface: #ffffff; --fg: #0b2433; --muted: #557080; --rule: #d3e0e4; --bad: #b3261e;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --court: #4cb6e6; --court-deep: #0e3a53; --bg: #071d2a; --surface: #0f2c3f; --fg: #e6f0f3; --muted: #93abb8; --rule: #1f4257; --bad: #ff8a80; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.45; }
+.wrap { max-width: 640px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 16px; }
+header { display: flex; align-items: center; gap: 14px; }
+header img { width: 54px; height: auto; }
+header small { display: block; font-family: var(--display); font-weight: 600; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 30px; line-height: 1; text-transform: uppercase; }
+.back { color: var(--court); font-weight: 600; text-decoration: none; justify-self: start; padding-block: 6px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 16px; padding: 18px; display: grid; gap: 12px; }
+label { font-weight: 600; font-size: 15px; display: grid; gap: 4px; }
+input { font: inherit; padding: 10px 12px; min-height: 44px; border-radius: 10px; border: 1px solid var(--rule); background: var(--bg); color: var(--fg); }
+button { min-height: 48px; border: 0; border-radius: 999px; background: var(--court-deep); color: var(--ball); font: 700 18px var(--display); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+button.ghost { background: transparent; color: var(--court); min-height: 40px; font-size: 15px; justify-self: start; padding: 0; }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid var(--court); outline-offset: 2px; }
+label.keep { display: flex; align-items: center; gap: 10px; font-weight: 400; min-height: 44px; }
+label.keep input { width: 22px; height: 22px; min-height: 0; margin: 0; accent-color: var(--court-deep); }
+.err { color: var(--bad); font-size: 15px; margin: 0; }
+.who { color: var(--muted); font-size: 14px; margin: 0; overflow-wrap: anywhere; }
+h2 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.tools { display: grid; gap: 12px; }
+.tool { display: grid; grid-template-columns: 48px 1fr auto; gap: 14px; align-items: center; background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 16px; padding: 16px; color: var(--fg); text-decoration: none; min-height: 72px; }
+.tool:hover { border-color: var(--court); }
+.tool .ic { width: 48px; height: 48px; border-radius: 12px; background: var(--court-deep); color: var(--ball); display: grid; place-items: center; }
+.tool b { display: block; color: var(--fg); font-family: var(--display); font-weight: 800; font-size: 22px; line-height: 1.05; text-transform: uppercase; }
+.tool span { font-size: 14px; color: var(--muted); }
+.tool .go { font-family: var(--display); font-weight: 700; font-size: 20px; color: var(--court); }
+.soon { border-style: dashed; color: var(--muted); font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./">← Events</a>
+  <header>
+    <img src="icons/logo.png" alt="ATP Pickleball Club">
+    <div><small>ATP Pickleball Club</small><h1>Committee</h1></div>
+  </header>
+
+  <form class="card" id="login" hidden>
+    <label for="email">Committee email<input id="email" type="email" autocomplete="username" required></label>
+    <label for="pw">Password<input id="pw" type="password" autocomplete="current-password" required></label>
+    <label class="keep"><input type="checkbox" id="keep"> Keep me signed in on this phone</label>
+    <button type="submit" id="go">Sign in</button>
+    <p class="err" id="err" hidden></p>
+  </form>
+
+  <p class="card" id="checking" hidden>Checking your sign-in…</p>
+
+  <div id="area" hidden style="display:grid;gap:16px">
+    <h2>Committee tools</h2>
+    <div class="tools">
+      <a class="tool" href="stats.html">
+        <span class="ic" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>
+        </span>
+        <span><b>App stats</b><span>How many phones have the Events app, and how often it's opened</span></span>
+        <span class="go" aria-hidden="true">→</span>
+      </a>
+      <div class="card soon">More committee links and tools will go here.</div>
+    </div>
+    <p class="who" id="who"></p>
+    <button type="button" class="ghost" id="out">Sign out</button>
+  </div>
+</div>
+
+<script src="committee-auth.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+function show(which, msg) {
+  ["login", "checking", "area"].forEach(id => $(id).hidden = id !== which);
+  $("err").hidden = !msg; $("err").textContent = msg || "";
+}
+
+async function enter() {
+  const tok = await ATP_AUTH.token();
+  if (!tok) return show("login");
+  show("checking");
+  try {
+    if (!(await ATP_AUTH.isCommittee(tok))) {
+      ATP_AUTH.signOut();
+      return show("login", ATP_AUTH.message(new Error("not-committee")));
+    }
+  } catch (e) {
+    return show("login", "Couldn't check your sign-in. Check your connection and try again.");
+  }
+  $("who").textContent = "Signed in as " + ATP_AUTH.email();
+  show("area");
+}
+
+$("login").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  $("go").disabled = true; $("go").textContent = "Signing in…";
+  try { await ATP_AUTH.signIn($("email").value, $("pw").value, $("keep").checked); await enter(); }
+  catch (e) { show("login", ATP_AUTH.message(e)); }
+  finally { $("go").disabled = false; $("go").textContent = "Sign in"; }
+});
+$("out").addEventListener("click", () => { ATP_AUTH.signOut(); show("login"); });
+$("keep").checked = ATP_AUTH.remembered();
+
+enter();
+</script>
+</body>
+</html>

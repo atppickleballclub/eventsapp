@@ -38,7 +38,16 @@ newclub: { name: "Some Pickleball Club", initials: "SPC", logo: "icons/newclub.p
 | `manifest.json` | Makes it installable (name, icon, colours) |
 | `sw.js` | Lets it open offline with the last copy seen |
 | `icons/` | App icons and the header logo, made from the club badge |
-| `CNAME` | Tells GitHub Pages to use the club subdomain |
+| `manifest-test.json`, `icons/test/` | Test app name, red colour and TEST icons. Only used on the testapp address |
+| `committee.html` | Committee login and committee-only tools (opened from "Committee login" at the bottom of the app) |
+| `committee-auth.js` | Shared committee sign-in used by `committee.html` and `stats.html` |
+| `CNAME` | Tells GitHub Pages to use the club subdomain. **Live repo only** |
+
+## Live and test apps
+
+The **eventsapp** (live) and **testapp** repos hold exactly the same files. The page works out which one it is from its address and picks the right name, icons and colour itself. So an update can be uploaded to both repos as-is.
+
+The one exception is `CNAME`: it lives only in the eventsapp repo and is never in an update zip.
 
 ## Updating the logo
 
