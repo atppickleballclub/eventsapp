@@ -14,12 +14,12 @@
 /* Layout: one column. Sign-in card, then headline numbers, a 14-day bar chart and a platform split. */
 :root {
   --court: #1a78a8; --court-deep: #0b344b; --ball: #d7db38; --rim: #aec11d;
-  --bg: #eef3f4; --surface: #ffffff; --fg: #0b2433; --muted: #557080; --rule: #d3e0e4; --bad: #b3261e;
+  --bg: #eef3f4; --surface: #ffffff; --fg: #0b2433; --muted: #557080; --rule: #d3e0e4; --bad: #b3261e; --grid: #e3ecef; --hot: #d55a1a;
   --display: "Barlow Condensed", "Arial Narrow", sans-serif;
   --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --court: #4cb6e6; --court-deep: #0e3a53; --bg: #071d2a; --surface: #0f2c3f; --fg: #e6f0f3; --muted: #93abb8; --rule: #1f4257; --bad: #ff8a80; color-scheme: dark; }
+  :root { --court: #4cb6e6; --court-deep: #0e3a53; --bg: #071d2a; --surface: #0f2c3f; --fg: #e6f0f3; --muted: #93abb8; --rule: #1f4257; --bad: #ff8a80; --grid: #183a4e; --hot: #f08a4b; color-scheme: dark; }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -61,6 +61,26 @@ h2 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 14px; 
 .track i { display: block; height: 100%; background: var(--court); border-radius: 999px; }
 .row b { text-align: right; font-variant-numeric: tabular-nums; }
 .note { color: var(--muted); font-size: 14px; margin: 0; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.chip { flex: none; min-height: 40px; border: 1px solid var(--rule); background: var(--surface); color: var(--fg); border-radius: 999px; padding: 8px 14px;
+  font: 600 15px var(--body); letter-spacing: 0; text-transform: none; }
+.chip[aria-pressed="true"] { background: var(--court-deep); color: var(--ball); border-color: var(--court-deep); }
+.dayrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.dlabel { font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); display: block; }
+select { font: 600 16px var(--body); padding: 8px 12px; min-height: 44px; border-radius: 10px; border: 1px solid var(--rule); background: var(--surface); color: var(--fg); }
+select:focus-visible, .chip:focus-visible { outline: 3px solid var(--court); outline-offset: 2px; }
+.evtag { font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; background: #d55a1a; color: #fff; border-radius: 6px; padding: 2px 8px; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.readout { margin: 0; min-height: 24px; font-size: 15px; color: var(--muted); }
+.readout.on { color: var(--fg); font-weight: 700; font-variant-numeric: tabular-nums; }
+.svgchart { display: block; width: 100%; height: auto; }
+.svgchart text { font-family: var(--body); fill: var(--muted); font-size: 10px; }
+.hit { cursor: pointer; outline: none; }
+.hit:focus-visible { stroke: var(--court); stroke-width: 2; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 13px; padding: 6px 4px; border-bottom: 1px solid var(--rule); }
+td { padding: 8px 4px; border-bottom: 1px solid var(--rule); }
+td:not(:first-child), th:not(:first-child) { text-align: right; }
 .back { color: var(--court); font-weight: 600; text-decoration: none; justify-self: start; padding-block: 6px; }
 </style>
 </head>
@@ -69,7 +89,7 @@ h2 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 14px; 
   <a class="back" href="committee.html">← Committee</a>
   <header>
     <img src="icons/logo.png" alt="ATP Pickleball Club">
-    <div><small>ATP Events app</small><h1>Usage stats</h1></div>
+    <div><small>ATP Events · Committee</small><h1>Usage stats</h1></div>
   </header>
 
   <form class="card" id="login" hidden>
@@ -81,6 +101,13 @@ h2 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 14px; 
   </form>
 
   <div id="stats" hidden style="display:grid;gap:16px">
+    <div class="chips" role="group" aria-label="Site">
+      <button type="button" class="chip" data-site="app" aria-pressed="true">Events app</button>
+      <button type="button" class="chip" data-site="intraclub" aria-pressed="false">Intraclub</button>
+      <button type="button" class="chip" data-site="atpvsps" aria-pressed="false">ATP vs PS</button>
+    </div>
+
+    <div id="appblock" style="display:grid;gap:16px">
     <div class="big">
       <div class="stat main"><b id="s-installed">–</b><span>Phones using the installed app</span><small>Opened from the home screen in the last 60 days</small></div>
       <div class="stat"><b id="s-week">–</b><span>Active this week</span><small>Opened in the last 7 days</small></div>
@@ -89,14 +116,41 @@ h2 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 14px; 
       <div class="stat"><b id="s-new">–</b><span>New installs</span><small>First home-screen open, last 7 days</small></div>
     </div>
     <div class="card">
-      <h2>Phones per day, last 14 days</h2>
-      <div class="chart" id="chart"></div>
-      <div class="days" id="days"></div>
-    </div>
-    <div class="card">
       <h2>Installed by phone type</h2>
       <div class="split" id="split"></div>
     </div>
+    </div>
+
+    <section id="usage" style="display:grid;gap:16px">
+      <div class="dayrow">
+        <label for="day" class="dlabel">Day</label>
+        <select id="day"></select>
+        <span class="evtag" id="evtag" hidden>Event day</span>
+      </div>
+      <div class="pair">
+        <div class="stat"><b id="u-phones">–</b><span>Phones</span><small>Different phones that day</small></div>
+        <div class="stat"><b id="u-opens">–</b><span>Opens</span><small>Opened, or came back after 5+ minutes away</small></div>
+      </div>
+      <div class="card">
+        <h2>Opens per half hour</h2>
+        <p class="readout" id="read-half" aria-live="polite"></p>
+        <svg class="svgchart" id="halfhour" role="img" aria-label="Opens per half hour" viewBox="0 0 360 200"></svg>
+      </div>
+      <div class="card">
+        <h2>Last 14 days</h2>
+        <p class="readout" id="read-days" aria-live="polite"></p>
+        <svg class="svgchart" id="days14" role="img" aria-label="Phones per day, last 14 days" viewBox="0 0 360 190"></svg>
+      </div>
+      <div class="card" id="wayscard">
+        <h2>How people got there</h2>
+        <table>
+          <thead><tr><th>Way in</th><th>Phones</th><th>Opens</th></tr></thead>
+          <tbody id="ways"></tbody>
+        </table>
+        <p class="note">A phone that came both ways that day is counted in both rows.</p>
+      </div>
+      <p class="note" id="u-note" hidden></p>
+    </section>
     <p class="note" id="updated"></p>
     <button type="button" class="ghost" id="out">Sign out</button>
   </div>
@@ -177,11 +231,11 @@ async function load() {
   $("s-web").textContent = [...anyDevice].filter(d => !appDevice.has(d)).length;
   $("s-new").textContent = [...installed.values()].filter(v => v.first >= weekStart).length;
 
-  const perDay = days.map(d => distinct(r => r.date === d));
-  const max = Math.max(1, ...perDay);
-  $("chart").innerHTML = perDay.map((n, i) =>
-    `<div class="bar${days[i] === today ? " today" : ""}" title="${days[i]}: ${n}"><em>${n || ""}</em><i style="height:${(n / max) * 100}%"></i></div>`).join("");
-  $("days").innerHTML = days.map(d => `<span>${Number(d.slice(8))}</span>`).join("");
+  // Phones per day for the Events app come from the existing counter, which has
+  // the full history; the new usage tallies add the opens.
+  appPhones = {};
+  rows.forEach(r => { if (r.date && r.device) (appPhones[r.date] = appPhones[r.date] || new Set()).add(r.device); });
+  Object.keys(appPhones).forEach(d => appPhones[d] = appPhones[d].size);
 
   const counts = { ios: 0, android: 0, other: 0 };
   installed.forEach(v => { counts[v.platform] = (counts[v.platform] || 0) + 1; });
@@ -191,7 +245,107 @@ async function load() {
 
   $("updated").textContent = `Updated ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney", dateStyle: "medium", timeStyle: "short" })}. Figures cover the last 60 days.`;
   $("login").hidden = true; $("stats").hidden = false;
+  showSite(curSite, $("day").value);
 }
+
+/* ===== Opens and half-hour usage (from usage.js on each site) =====
+   One record per site per day: usage/<site>_<YYYY-MM-DD>. Reads the last 60 days. */
+const USAGE_DAYS = 60;
+const EVENT_DAYS = { intraclub: ["2026-12-13"], atpvsps: ["2027-01-31"] };   // shown with an "Event day" tag
+const HALF = []; for (let h = 6; h < 22; h++) HALF.push(String(h).padStart(2, "0") + ":00", String(h).padStart(2, "0") + ":30");
+const usageCache = {};
+let appPhones = {};          // Events app: phones per day from the existing counter
+let curSite = "app";
+
+async function fetchUsage(site, token, fresh) {
+  if (usageCache[site] && !fresh) return usageCache[site];
+  const dates = [...Array(USAGE_DAYS)].map((_, i) => sydDate(new Date(Date.now() - i * 86400000)));
+  const base = `projects/${FB_PROJECT}/databases/(default)/documents/usage/`;
+  const r = await fetch(`https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents:batchGet`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ documents: dates.map(d => base + site + "_" + d) })
+  });
+  if (r.status === 401 || r.status === 403) throw new Error("auth");
+  const rows = await r.json();
+  const byDate = {};
+  (Array.isArray(rows) ? rows : []).forEach(x => {
+    const f = x.found?.fields; if (!f) return;
+    const n = k => Number(f[k]?.integerValue || 0);
+    const half = {}; Object.keys(f).forEach(k => { if (/^h\d{4}$/.test(k)) half[k.slice(1, 3) + ":" + k.slice(3)] = n(k); });
+    byDate[f.date?.stringValue] = { opens: n("opens"), phones: n("phones"), viaApp: n("viaApp"), direct: n("direct"),
+      phonesViaApp: n("phonesViaApp"), phonesDirect: n("phonesDirect"), half };
+  });
+  return (usageCache[site] = { dates, byDate });
+}
+
+const svgEl = (tag, attrs, text) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; };
+const tok = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const niceTop = m => m <= 4 ? 4 : m <= 10 ? 10 : Math.ceil(m / 10) * 10;
+const fmtDay = d => new Date(d + "T12:00:00").toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
+
+// Bars you can tap (or click / Enter) to show their numbers in the readout line.
+function barChart(svg, readout, vals, labels, texts, opts) {
+  svg.innerHTML = "";
+  const L = 24, R = 356, T = opts.T, B = opts.B, top = niceTop(Math.max(0, ...vals)), bw = (R - L) / vals.length;
+  for (let g = 0; g <= opts.grid; g++) { const y = B - (B - T) * g / opts.grid;
+    svg.append(svgEl("line", { x1: L, x2: R, y1: y, y2: y, stroke: tok("--grid") }));
+    svg.append(svgEl("text", { x: L - 6, y: y + 4, "text-anchor": "end" }, Math.round(top * g / opts.grid))); }
+  const bars = [];
+  vals.forEach((v, i) => { const h = (B - T) * v / top, x = L + i * bw;
+    const r = svgEl("rect", { x: x + opts.pad, y: B - h, width: bw - opts.pad * 2, height: h, rx: 2, fill: tok("--court") });
+    svg.append(r); bars.push(r);
+    if (labels[i]) svg.append(svgEl("text", { x: x + bw / 2, y: B + 18, "text-anchor": "middle" }, labels[i])); });
+  const pick = i => { bars.forEach((r, j) => r.setAttribute("fill", j === i ? tok("--hot") : tok("--court"))); readout.textContent = texts[i]; readout.classList.add("on"); };
+  vals.forEach((v, i) => {
+    const hit = svgEl("rect", { x: L + i * bw, y: T, width: bw, height: B - T, fill: "transparent", tabindex: 0, role: "button", "aria-label": texts[i], class: "hit" });
+    hit.addEventListener("click", () => pick(i));
+    hit.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(i); } });
+    svg.append(hit); });
+  readout.textContent = opts.hint; readout.classList.remove("on");
+}
+
+function showDay(date) {
+  const U = usageCache[curSite]; if (!U) return;
+  const d = Object.assign({ opens: 0, phones: 0, viaApp: 0, direct: 0, phonesViaApp: 0, phonesDirect: 0, half: {} }, U.byDate[date]);
+  if (curSite === "app") d.phones = appPhones[date] || 0;
+  $("evtag").hidden = !(EVENT_DAYS[curSite] || []).includes(date);
+  $("u-phones").textContent = d.phones; $("u-opens").textContent = d.opens;
+  const vals = HALF.map(t => d.half[t] || 0);
+  barChart($("halfhour"), $("read-half"), vals, HALF.map((t, i) => i % 4 === 0 ? t : ""),
+    HALF.map((t, i) => `${t}–${HALF[i + 1] || "22:00"}: ${vals[i]} open${vals[i] === 1 ? "" : "s"}`),
+    { T: 10, B: 172, grid: 4, pad: 1.5, hint: "Tap a bar to see its numbers." });
+  const outside = d.opens - vals.reduce((a, b) => a + b, 0);
+  $("u-note").hidden = outside <= 0;
+  $("u-note").textContent = `${outside} open${outside === 1 ? " was" : "s were"} before 6:00 or after 22:00, so not on the chart.`;
+  $("ways").innerHTML = [["Tapped it in the Events app", d.phonesViaApp, d.viaApp], ["QR code or direct link", d.phonesDirect, d.direct]]
+    .map(w => `<tr><td>${w[0]}</td><td>${w[1]}</td><td>${w[2]}</td></tr>`).join("");
+}
+
+async function showSite(site, keepDay) {
+  curSite = site;
+  document.querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", b.dataset.site === site));
+  $("appblock").hidden = site !== "app"; $("wayscard").hidden = site === "app";
+  const token = await ATP_AUTH.token(); if (!token) return showLogin();
+  let U;
+  try { U = await fetchUsage(site, token, true); }
+  catch (e) { $("read-half").textContent = "Couldn't load the usage numbers. Check your connection and try again."; return; }
+  const has = d => U.byDate[d] || (site === "app" && appPhones[d]);
+  const withData = U.dates.filter(has);
+  const today = U.dates[0];
+  const list = [today, ...withData.filter(d => d !== today)];
+  $("day").innerHTML = list.map(d => `<option value="${d}">${d === today ? "Today, " : ""}${fmtDay(d)}${(EVENT_DAYS[site] || []).includes(d) ? " (event day)" : ""}${has(d) ? "" : " (no opens yet)"}</option>`).join("");
+  const last14 = U.dates.slice(0, 14).reverse();
+  const ph = last14.map(d => site === "app" ? (appPhones[d] || 0) : (U.byDate[d]?.phones || 0)), op = last14.map(d => U.byDate[d]?.opens || 0);
+  barChart($("days14"), $("read-days"), ph, last14.map((d, i) => i % 2 === 1 ? String(Number(d.slice(8))) : ""),
+    last14.map((d, i) => `${fmtDay(d)}: ${ph[i]} phone${ph[i] === 1 ? "" : "s"}, ${op[i]} open${op[i] === 1 ? "" : "s"}`),
+    { T: 12, B: 162, grid: 2, pad: 3, hint: "Tap a day to see its phones and opens." });
+  const want = keepDay && list.includes(keepDay) ? keepDay : today;
+  $("day").value = want; showDay(want);
+}
+document.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => showSite(b.dataset.site)));
+$("day").addEventListener("change", e => showDay(e.target.value));
+// Fresh numbers when you come back to this page (e.g. after opening a site to test).
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("stats").hidden) { load(); } });
 
 load();
 </script>

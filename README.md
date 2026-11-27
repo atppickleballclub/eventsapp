@@ -40,6 +40,7 @@ newclub: { name: "Some Pickleball Club", initials: "SPC", logo: "icons/newclub.p
 | `icons/` | App icons and the header logo, made from the club badge |
 | `manifest-test.json`, `icons/test/` | Test app name, red colour and TEST icons. Only used on the testapp address |
 | `committee.html` | Committee login and committee-only tools (opened from "Committee login" at the bottom of the app) |
+| `usage.js` | Shared usage counter (opens, phones, half hours). Also loaded by the event sites from this address, so it must stay on the live eventsapp |
 | `committee-auth.js` | Shared committee sign-in used by `committee.html` and `stats.html` |
 | `CNAME` | Tells GitHub Pages to use the club subdomain. **Live repo only** |
 

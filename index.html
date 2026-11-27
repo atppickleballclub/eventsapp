@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0b344b">
-<link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="../atp-events/manifest.json">
+<link rel="icon" href="../atp-events/icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="../atp-events/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -226,7 +226,7 @@ footer a.cm { color: var(--muted); font-weight: 400; font-size: 12px; padding-bl
 <div class="wrap">
   <div class="testbar" id="testbar" hidden><b>Test version</b>Changes and notifications here only reach testers, not members.</div>
   <header class="top">
-    <img class="logo" src="icons/logo.png" alt="ATP Pickleball Club" width="470" height="512">
+    <img class="logo" src="../atp-events/icons/logo.png" alt="ATP Pickleball Club" width="470" height="512">
     <div class="club"><small>ATP Pickleball Club</small>Events</div>
       </header>
   <main id="app"></main>
@@ -340,15 +340,21 @@ function crests(e) {
   return `<span class="clubs">${list.map((c, i) => hat(one(c), i)).join(sep)}</span>`;
 }
 
+// Event site links say they came from the app, so the event site's usage
+// stats can split "from the Events app" and "QR code / direct link".
+function fromApp(url) {
+  try { const u = new URL(url); u.searchParams.set("from", "app"); return u.href; } catch (e) { return url; }
+}
+
 function hero(e) {
   const s = status(e), n = daysTo(e);
   if (e.banner) {
-    const link = e.url || e.flyer;
+    const link = e.url ? fromApp(e.url) : e.flyer;
     const inner = `${bannerImg(e, true)}
       <span class="count">${s === "live" ? "<b>On today</b>" : `<span>Next up</span><b>${n}</b><span>${n === 1 ? "day to go" : "days to go"}</span>`}</span>`;
     return link ? `<a class="hero banner" href="${esc(link)}">${inner}</a>` : `<div class="hero banner">${inner}</div>`;
   }
-  const link = e.url || e.flyer;
+  const link = e.url ? fromApp(e.url) : e.flyer;
   const tag = link ? "a" : "div";
   const href = link ? ` href="${esc(link)}"` : "";
   return `<${tag} class="hero${e.theme ? " " + esc(e.theme) : ""}"${href}>
@@ -376,7 +382,7 @@ function bannerAlt(e) {
 
 function tile(e) {
   const s = status(e);
-  const link = e.url || e.flyer;
+  const link = e.url ? fromApp(e.url) : e.flyer;
   if (e.banner) {
     const img = bannerImg(e, true);
     return link ? `<a class="tile banner" href="${esc(link)}">${img}</a>` : `<div class="tile banner">${img}</div>`;
@@ -487,6 +493,13 @@ if ("serviceWorker" in navigator && location.protocol === "https:" && /atppickle
   };
   send();
   document.addEventListener("visibilitychange", () => { if (!document.hidden) send(); });
+})();
+/* ===== Opens and half-hour usage (shared usage.js, also used by the event sites) ===== */
+(function loadUsage() {
+  if (!ON_REAL_SITE || !SITE.counter) return;          // live app only, like the counter above
+  const sc = document.createElement("script");
+  sc.src = "usage.js"; sc.defer = true; sc.setAttribute("data-site", "app");
+  document.head.appendChild(sc);
 })();
 /* ===== Notifications (OneSignal) =====
    Only runs when this version has a OneSignal App ID (see SITES at the top).
