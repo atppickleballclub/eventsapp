@@ -44,12 +44,20 @@
     lastCount = Date.now();
     var t = sydneyNow();
     var dayKey = "atpUsage_" + SITE + "_" + t.date;
-    var newPhone = !get("localStorage", dayKey);
+    var wayKey = dayKey + "_" + via;
+    var newPhone = !get("localStorage", dayKey);                 // first visit today at all
+    var newWay = !!via && !get("localStorage", wayKey);           // first visit today this way in
     if (newPhone) set("localStorage", dayKey, "1");
+    if (newWay) set("localStorage", wayKey, "1");
 
+    // "phones" counts each phone once a day. The way-in rows count a phone once
+    // for each way it arrived, so a phone that used both shows in both rows.
     var fields = ["opens", t.box];
     if (via) fields.push(via === "app" ? "viaApp" : "direct");
-    if (newPhone) { fields.push("phones"); if (via) fields.push(via === "app" ? "phonesViaApp" : "phonesDirect"); }
+    if (newPhone) fields.push("phones");
+    if (newWay) fields.push(via === "app" ? "phonesViaApp" : "phonesDirect");
+
+    function undo() { if (newPhone) del("localStorage", dayKey); if (newWay) del("localStorage", wayKey); }
 
     var name = "projects/" + PROJECT + "/databases/(default)/documents/usage/" + SITE + "_" + t.date;
     var body = { writes: [{
@@ -60,15 +68,14 @@
     try {
       fetch("https://firestore.googleapis.com/v1/projects/" + PROJECT + "/databases/(default)/documents:commit?key=" + KEY, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true
-      }).then(function (r) { if (!r.ok && newPhone) del("localStorage", dayKey); })
-        .catch(function () { if (newPhone) del("localStorage", dayKey); });
+      }).then(function (r) { if (!r.ok) undo(); }).catch(undo);
     } catch (e) {}
 
     // Tidy up this site's markers from earlier days.
     try {
       for (var i = localStorage.length - 1; i >= 0; i--) {
         var k = localStorage.key(i);
-        if (k && k.indexOf("atpUsage_" + SITE + "_") === 0 && k !== dayKey) localStorage.removeItem(k);
+        if (k && k.indexOf("atpUsage_" + SITE + "_") === 0 && k.indexOf(dayKey) !== 0) localStorage.removeItem(k);
       }
     } catch (e) {}
   }
