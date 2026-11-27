@@ -286,7 +286,9 @@ let curSite = "app";
 async function fetchUsage(site, token, force) {
   const c = usageCache[site];
   const dates = [...Array(USAGE_DAYS)].map((_, i) => sydDate(new Date(Date.now() - i * 86400000)));
-  const full = force || !c || Date.now() - c.at >= FRESH_MS || c.dates[0] !== dates[0];
+  // Past days never change, so after the first load only today's record is re-read
+  // (1 read). The full 60 days again only on Refresh, a new day or reopening the page.
+  const full = force || !c || c.dates[0] !== dates[0];
   const want = full ? dates : [dates[0]];
   const base = `projects/${FB_PROJECT}/databases/(default)/documents/usage/`;
   const r = await fetch(`https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents:batchGet`, {
