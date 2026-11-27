@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0b344b">
-<link rel="manifest" href="../atp-events/manifest.json">
-<link rel="icon" href="../atp-events/icons/icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="../atp-events/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -226,7 +226,7 @@ footer a.cm { color: var(--muted); font-weight: 400; font-size: 12px; padding-bl
 <div class="wrap">
   <div class="testbar" id="testbar" hidden><b>Test version</b>Changes and notifications here only reach testers, not members.</div>
   <header class="top">
-    <img class="logo" src="../atp-events/icons/logo.png" alt="ATP Pickleball Club" width="470" height="512">
+    <img class="logo" src="icons/logo.png" alt="ATP Pickleball Club" width="470" height="512">
     <div class="club"><small>ATP Pickleball Club</small>Events</div>
       </header>
   <main id="app"></main>
@@ -461,35 +461,47 @@ if ("serviceWorker" in navigator && location.protocol === "https:" && /atppickle
   }).catch(() => {});
 }
 /* ===== Usage counter =====
-   Once a day per phone, saves an anonymous note to the ATP Events Firebase:
-   a random ID for this phone, the date, iPhone/Android, and whether it was
-   opened from the home screen. No names or personal details.            */
+   Each phone keeps ONE anonymous record in the ATP Events Firebase (appDevices/<random ID>):
+   first seen, first installed, last seen, last installed, and iPhone/Android.
+   Updated at most once a day (twice if it's opened in a browser and then the
+   installed app on the same day). No names or personal details.
+   (Before 28 Nov 2026 the app saved one record per phone per day in appVisits.) */
 (function countVisit() {
   if (!ON_REAL_SITE || !SITE.counter) return;
   const FB_KEY = "AIzaSyAykyvBpr-3H4_gCm--8tDN2IhV-2EFfj0";
   const FB_PROJECT = "atp-events";
   const send = () => {
-    let id, last;
+    const installed = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    const date = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
+    let id, last, first, firstInst, lastInst;
     try {
       id = localStorage.getItem("atpDevice");
       if (!id) { id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)).slice(0, 36); localStorage.setItem("atpDevice", id); }
-      last = localStorage.getItem("atpLastCount");
+      last = localStorage.getItem("atpCardDay") || "";
+      first = localStorage.getItem("atpFirstSeen") || date;
+      firstInst = localStorage.getItem("atpFirstInstalled") || (installed ? date : "");
+      lastInst = installed ? date : (localStorage.getItem("atpLastInstalled") || "");
     } catch (e) { return; }
-    const installed = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    // Already sent today: as the installed app, or in a browser and still in a browser.
+    if (last === date + "-app" || (last === date + "-web" && !installed)) return;
     const ua = navigator.userAgent;
     const platform = /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1) ? "ios" : /android/i.test(ua) ? "android" : "other";
-    const date = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
-    const stamp = date + (installed ? "-app" : "-web");
-    if (last === stamp) return;
-    const docId = date + "_" + id + (installed ? "_app" : "_web");
-    fetch(`https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents/appVisits?documentId=${encodeURIComponent(docId)}&key=${FB_KEY}`, {
-      method: "POST",
+    fetch(`https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents/appDevices/${encodeURIComponent(id)}?key=${FB_KEY}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fields: {
-        date: { stringValue: date }, device: { stringValue: id },
-        installed: { booleanValue: installed }, platform: { stringValue: platform }
+        first: { stringValue: first }, firstInstalled: { stringValue: firstInst },
+        lastSeen: { stringValue: date }, lastInstalled: { stringValue: lastInst }, platform: { stringValue: platform }
       } })
-    }).then(r => { if (r.ok || r.status === 409) { try { localStorage.setItem("atpLastCount", stamp); } catch (e) {} } }).catch(() => {});
+    }).then(r => {
+      if (!r.ok) return;
+      try {
+        localStorage.setItem("atpCardDay", date + (installed ? "-app" : "-web"));
+        localStorage.setItem("atpFirstSeen", first);
+        if (firstInst) localStorage.setItem("atpFirstInstalled", firstInst);
+        if (lastInst) localStorage.setItem("atpLastInstalled", lastInst);
+      } catch (e) {}
+    }).catch(() => {});
   };
   send();
   document.addEventListener("visibilitychange", () => { if (!document.hidden) send(); });

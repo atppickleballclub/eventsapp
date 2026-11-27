@@ -152,6 +152,7 @@ td:not(:first-child), th:not(:first-child) { text-align: right; }
       <p class="note" id="u-note" hidden></p>
     </section>
     <p class="note" id="updated"></p>
+    <button type="button" class="ghost" id="refresh">Refresh all numbers</button>
     <button type="button" class="ghost" id="out">Sign out</button>
   </div>
 </div>
@@ -176,76 +177,100 @@ $("login").addEventListener("submit", async ev => {
 $("out").addEventListener("click", () => { ATP_AUTH.signOut(); showLogin(); });
 $("keep").checked = ATP_AUTH.remembered();
 
-// Only reads the last DAYS days of counter notes, so the stats page stays
-// cheap however long the app has been running.
+// Events app phones. Since 28 Nov 2026 each phone keeps ONE record (appDevices/<id>:
+// first seen, first installed, last seen, last installed, phone type), so reading the
+// last 60 days costs one read per phone. Before that the app saved one record per
+// phone per day (appVisits); those are read only for the days before CUTOVER, and
+// drop out by themselves 60 days later.
 const DAYS = 60;
-async function fetchAll(token) {
-  const since = new Date(Date.now() - (DAYS - 1) * 86400000).toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
+const CUTOVER = "2026-11-28";
+async function runQuery(token, collectionId, filters) {
+  const where = filters.length === 1 ? { fieldFilter: filters[0] } : { compositeFilter: { op: "AND", filters: filters.map(f => ({ fieldFilter: f })) } };
   const r = await fetch(`https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents:runQuery`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-    body: JSON.stringify({ structuredQuery: {
-      from: [{ collectionId: "appVisits" }],
-      where: { fieldFilter: { field: { fieldPath: "date" }, op: "GREATER_THAN_OR_EQUAL", value: { stringValue: since } } }
-    } })
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId }], where } })
   });
   if (r.status === 401 || r.status === 403) throw new Error("auth");
   const rows = await r.json();
-  const out = [];
-  (Array.isArray(rows) ? rows : []).forEach(x => {
-    const f = x.document?.fields; if (!f) return;
-    out.push({ date: f.date?.stringValue, device: f.device?.stringValue, installed: !!f.installed?.booleanValue, platform: f.platform?.stringValue || "other" });
-  });
-  return out;
+  return (Array.isArray(rows) ? rows : []).map(x => x.document && { id: x.document.name.split("/").pop(), f: x.document.fields }).filter(Boolean);
+}
+const str = v => (v && v.stringValue) || "";
+async function fetchAll(token) {
+  const since = sydDate(new Date(Date.now() - (DAYS - 1) * 86400000));
+  const old = since < CUTOVER ? await runQuery(token, "appVisits", [
+    { field: { fieldPath: "date" }, op: "GREATER_THAN_OR_EQUAL", value: { stringValue: since } },
+    { field: { fieldPath: "date" }, op: "LESS_THAN", value: { stringValue: CUTOVER } }]) : [];
+  const cards = await runQuery(token, "appDevices", [
+    { field: { fieldPath: "lastSeen" }, op: "GREATER_THAN_OR_EQUAL", value: { stringValue: since } }]);
+  return {
+    old: old.map(d => ({ date: str(d.f.date), device: str(d.f.device), installed: !!d.f.installed?.booleanValue, platform: str(d.f.platform) || "other" })),
+    cards: cards.map(d => ({ device: d.id, lastSeen: str(d.f.lastSeen), lastInstalled: str(d.f.lastInstalled), firstInstalled: str(d.f.firstInstalled), platform: str(d.f.platform) || "other" }))
+  };
 }
 
 const sydDate = d => d.toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
 
-async function load() {
+// Firestore charges one read per record, so the page keeps what it has fetched
+// and only re-reads the full 60 days every 10 minutes or when Refresh is tapped.
+const FRESH_MS = 10 * 60 * 1000;
+let appCache = null;          // { at, rows }, also kept for this browser tab so reopening the page within 10 minutes costs nothing
+try { appCache = JSON.parse(sessionStorage.getItem("atpStatsCache2") || "null"); } catch (e) {}
+async function load(force) {
   const token = await ATP_AUTH.token();
   if (!token) return showLogin();
   let rows;
-  try { rows = await fetchAll(token); }
+  try {
+    if (!force && appCache && Date.now() - appCache.at < FRESH_MS) rows = appCache.rows;
+    else {
+      rows = await fetchAll(token); appCache = { at: Date.now(), rows };
+      try { sessionStorage.setItem("atpStatsCache2", JSON.stringify(appCache)); } catch (e) {}
+    }
+  }
   catch (e) { return showLogin(e.message === "auth" ? ATP_AUTH.message(new Error("not-committee")) : "Couldn't load the numbers. Check your connection and try again."); }
 
   const today = sydDate(new Date());
   const days = [...Array(14)].map((_, i) => sydDate(new Date(Date.now() - (13 - i) * 86400000)));
   const weekStart = days[7];
 
-  const installed = new Map();          // device -> {platform, first}
-  const anyDevice = new Set(), appDevice = new Set();
-  rows.forEach(r => {
+  const since = sydDate(new Date(Date.now() - (DAYS - 1) * 86400000));
+  // One entry per phone, merging the old daily records with the new phone records.
+  const dev = new Map();
+  const get = id => dev.get(id) || (dev.set(id, { lastSeen: "", lastInstalled: "", firstInstalled: "", platform: "other" }), dev.get(id));
+  const later = (a, b) => (a > b ? a : b), earlier = (a, b) => (!a ? b : !b ? a : a < b ? a : b);
+  rows.old.forEach(r => {
     if (!r.date || !r.device) return;
-    anyDevice.add(r.device);
-    if (r.installed) {
-      appDevice.add(r.device);
-      const cur = installed.get(r.device);
-      if (!cur || r.date < cur.first) installed.set(r.device, { platform: r.platform, first: r.date });
-    }
+    const d = get(r.device); d.lastSeen = later(d.lastSeen, r.date);
+    if (r.installed) { d.lastInstalled = later(d.lastInstalled, r.date); d.firstInstalled = earlier(d.firstInstalled, r.date); d.platform = r.platform; }
   });
-  const distinct = (pred) => new Set(rows.filter(pred).map(r => r.device)).size;
+  rows.cards.forEach(c => {
+    const d = get(c.device); d.lastSeen = later(d.lastSeen, c.lastSeen);
+    d.lastInstalled = later(d.lastInstalled, c.lastInstalled); d.firstInstalled = earlier(d.firstInstalled, c.firstInstalled);
+    d.platform = c.platform || d.platform;
+  });
+  const all = [...dev.values()].filter(d => d.lastSeen >= since);
+  const installed = all.filter(d => d.lastInstalled >= since);
 
-  $("s-installed").textContent = installed.size;
-  $("s-week").textContent = distinct(r => r.date >= weekStart);
-  $("s-today").textContent = distinct(r => r.date === today);
-  $("s-web").textContent = [...anyDevice].filter(d => !appDevice.has(d)).length;
-  $("s-new").textContent = [...installed.values()].filter(v => v.first >= weekStart).length;
+  $("s-installed").textContent = installed.length;
+  $("s-week").textContent = all.filter(d => d.lastSeen >= weekStart).length;
+  $("s-today").textContent = all.filter(d => d.lastSeen === today).length;
+  $("s-web").textContent = all.filter(d => !(d.lastInstalled >= since)).length;
+  $("s-new").textContent = installed.filter(d => d.firstInstalled >= weekStart).length;
 
-  // Phones per day for the Events app come from the existing counter, which has
-  // the full history; the new usage tallies add the opens.
+  // Phones per day before CUTOVER come from the old daily records; after it, from the usage tallies.
   appPhones = {};
-  rows.forEach(r => { if (r.date && r.device) (appPhones[r.date] = appPhones[r.date] || new Set()).add(r.device); });
+  rows.old.forEach(r => { if (r.date && r.device) (appPhones[r.date] = appPhones[r.date] || new Set()).add(r.device); });
   Object.keys(appPhones).forEach(d => appPhones[d] = appPhones[d].size);
 
   const counts = { ios: 0, android: 0, other: 0 };
   installed.forEach(v => { counts[v.platform] = (counts[v.platform] || 0) + 1; });
-  const total = Math.max(1, installed.size);
+  const total = Math.max(1, installed.length);
   $("split").innerHTML = [["iPhone", counts.ios], ["Android", counts.android], ["Other", counts.other]]
     .map(([name, n]) => `<div class="row"><span>${name}</span><span class="track"><i style="width:${(n / total) * 100}%"></i></span><b>${n}</b></div>`).join("");
 
-  $("updated").textContent = `Updated ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Sydney", dateStyle: "medium", timeStyle: "short" })}. Figures cover the last 60 days.`;
+  $("updated").textContent = `Updated ${new Date(appCache.at).toLocaleString("en-AU", { timeZone: "Australia/Sydney", dateStyle: "medium", timeStyle: "short" })}. Figures cover the last 60 days.`;
   $("login").hidden = true; $("stats").hidden = false;
-  showSite(curSite, $("day").value);
+  showSite(curSite, $("day").value, force);
 }
 
 /* ===== Opens and half-hour usage (from usage.js on each site) =====
@@ -254,20 +279,24 @@ const USAGE_DAYS = 60;
 const EVENT_DAYS = { intraclub: ["2026-12-13"], atpvsps: ["2027-01-31"] };   // shown with an "Event day" tag
 const HALF = []; for (let h = 6; h < 22; h++) HALF.push(String(h).padStart(2, "0") + ":00", String(h).padStart(2, "0") + ":30");
 const usageCache = {};
-let appPhones = {};          // Events app: phones per day from the existing counter
+let appPhones = {};          // Events app: phones per day from the old daily records (before CUTOVER)
+const appDayPhones = (date, tally) => date < CUTOVER ? Math.max(appPhones[date] || 0, tally || 0) : (tally || 0);
 let curSite = "app";
 
-async function fetchUsage(site, token, fresh) {
-  if (usageCache[site] && !fresh) return usageCache[site];
+async function fetchUsage(site, token, force) {
+  const c = usageCache[site];
   const dates = [...Array(USAGE_DAYS)].map((_, i) => sydDate(new Date(Date.now() - i * 86400000)));
+  const full = force || !c || Date.now() - c.at >= FRESH_MS || c.dates[0] !== dates[0];
+  const want = full ? dates : [dates[0]];
   const base = `projects/${FB_PROJECT}/databases/(default)/documents/usage/`;
   const r = await fetch(`https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents:batchGet`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-    body: JSON.stringify({ documents: dates.map(d => base + site + "_" + d) })
+    body: JSON.stringify({ documents: want.map(d => base + site + "_" + d) })
   });
   if (r.status === 401 || r.status === 403) throw new Error("auth");
   const rows = await r.json();
-  const byDate = {};
+  const byDate = full ? {} : c.byDate;
+  if (!full) delete byDate[dates[0]];
   (Array.isArray(rows) ? rows : []).forEach(x => {
     const f = x.found?.fields; if (!f) return;
     const n = k => Number(f[k]?.integerValue || 0);
@@ -275,7 +304,7 @@ async function fetchUsage(site, token, fresh) {
     byDate[f.date?.stringValue] = { opens: n("opens"), phones: n("phones"), viaApp: n("viaApp"), direct: n("direct"),
       phonesViaApp: n("phonesViaApp"), phonesDirect: n("phonesDirect"), half };
   });
-  return (usageCache[site] = { dates, byDate });
+  return (usageCache[site] = { dates, byDate, at: full ? Date.now() : c.at });
 }
 
 const svgEl = (tag, attrs, text) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; };
@@ -307,7 +336,7 @@ function barChart(svg, readout, vals, labels, texts, opts) {
 function showDay(date) {
   const U = usageCache[curSite]; if (!U) return;
   const d = Object.assign({ opens: 0, phones: 0, viaApp: 0, direct: 0, phonesViaApp: 0, phonesDirect: 0, half: {} }, U.byDate[date]);
-  if (curSite === "app") d.phones = appPhones[date] || 0;
+  if (curSite === "app") d.phones = appDayPhones(date, d.phones);
   $("evtag").hidden = !(EVENT_DAYS[curSite] || []).includes(date);
   $("u-phones").textContent = d.phones; $("u-opens").textContent = d.opens;
   const vals = HALF.map(t => d.half[t] || 0);
@@ -321,21 +350,21 @@ function showDay(date) {
     .map(w => `<tr><td>${w[0]}</td><td>${w[1]}</td><td>${w[2]}</td></tr>`).join("");
 }
 
-async function showSite(site, keepDay) {
+async function showSite(site, keepDay, force) {
   curSite = site;
   document.querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", b.dataset.site === site));
   $("appblock").hidden = site !== "app"; $("wayscard").hidden = site === "app";
   const token = await ATP_AUTH.token(); if (!token) return showLogin();
   let U;
-  try { U = await fetchUsage(site, token, true); }
+  try { U = await fetchUsage(site, token, force); }
   catch (e) { $("read-half").textContent = "Couldn't load the usage numbers. Check your connection and try again."; return; }
-  const has = d => U.byDate[d] || (site === "app" && appPhones[d]);
+  const has = d => U.byDate[d] || (site === "app" && appPhones[d]);   // unchanged
   const withData = U.dates.filter(has);
   const today = U.dates[0];
   const list = [today, ...withData.filter(d => d !== today)];
   $("day").innerHTML = list.map(d => `<option value="${d}">${d === today ? "Today, " : ""}${fmtDay(d)}${(EVENT_DAYS[site] || []).includes(d) ? " (event day)" : ""}${has(d) ? "" : " (no opens yet)"}</option>`).join("");
   const last14 = U.dates.slice(0, 14).reverse();
-  const ph = last14.map(d => site === "app" ? (appPhones[d] || 0) : (U.byDate[d]?.phones || 0)), op = last14.map(d => U.byDate[d]?.opens || 0);
+  const ph = last14.map(d => site === "app" ? appDayPhones(d, U.byDate[d]?.phones || 0) : (U.byDate[d]?.phones || 0)), op = last14.map(d => U.byDate[d]?.opens || 0);
   barChart($("days14"), $("read-days"), ph, last14.map((d, i) => i % 2 === 1 ? String(Number(d.slice(8))) : ""),
     last14.map((d, i) => `${fmtDay(d)}: ${ph[i]} phone${ph[i] === 1 ? "" : "s"}, ${op[i]} open${op[i] === 1 ? "" : "s"}`),
     { T: 12, B: 162, grid: 2, pad: 3, hint: "Tap a day to see its phones and opens." });
@@ -345,7 +374,12 @@ async function showSite(site, keepDay) {
 document.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => showSite(b.dataset.site)));
 $("day").addEventListener("change", e => showDay(e.target.value));
 // Fresh numbers when you come back to this page (e.g. after opening a site to test).
-document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("stats").hidden) { load(); } });
+let lastLight = Date.now();
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || $("stats").hidden || Date.now() - lastLight < 60000) return;
+  lastLight = Date.now(); showSite(curSite, $("day").value);     // re-reads just today's record
+});
+$("refresh").addEventListener("click", () => { lastLight = Date.now(); load(true); });
 
 load();
 </script>
